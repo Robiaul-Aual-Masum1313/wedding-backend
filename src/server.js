@@ -8,6 +8,7 @@ import { toNodeHandler } from "better-auth/node";
 
 import { connectDB } from "./config/db.js";
 import { createAuth } from "./lib/auth.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
 
 const app = express();
 
@@ -30,6 +31,9 @@ const startServer = async () => {
     // Initialize Better Auth after database connection
     const auth = createAuth();
 
+    // Make the auth instance available to middleware.
+app.locals.auth = auth;
+
     // Better Auth handler
     // Express 5 syntax
     app.all("/api/auth/*splat", toNodeHandler(auth));
@@ -37,6 +41,8 @@ const startServer = async () => {
     // Body parser for other API routes
     app.use(express.json());
 
+
+    app.use("/api/uploads", uploadRoutes);
     // Health check
     app.get("/", (req, res) => {
       res.status(200).json({
