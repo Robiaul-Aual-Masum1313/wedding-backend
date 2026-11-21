@@ -1,4 +1,3 @@
-
 import "dotenv/config";
 
 import express from "express";
@@ -9,6 +8,9 @@ import { toNodeHandler } from "better-auth/node";
 import { connectDB } from "./config/db.js";
 import { createAuth } from "./lib/auth.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
+import customerRoutes from "./routes/customerRoutes.js";
+import vendorRoutes from "./routes/vendorRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 const app = express();
 
@@ -19,7 +21,7 @@ app.use(
   cors({
     origin: process.env.CLIENT_URL,
     credentials: true,
-  })
+  }),
 );
 
 // Start application
@@ -32,7 +34,7 @@ const startServer = async () => {
     const auth = createAuth();
 
     // Make the auth instance available to middleware.
-app.locals.auth = auth;
+    app.locals.auth = auth;
 
     // Better Auth handler
     // Express 5 syntax
@@ -41,7 +43,10 @@ app.locals.auth = auth;
     // Body parser for other API routes
     app.use(express.json());
 
-
+    // Protected API routes
+    app.use("/api/customer", customerRoutes);
+    app.use("/api/vendor", vendorRoutes);
+    app.use("/api/admin", adminRoutes);
     app.use("/api/uploads", uploadRoutes);
     // Health check
     app.get("/", (req, res) => {
