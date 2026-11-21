@@ -11,6 +11,7 @@ import uploadRoutes from "./routes/uploadRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import vendorRoutes from "./routes/vendorRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import serviceRoutes from "./routes/serviceRoutes.js";
 
 const app = express();
 
@@ -48,6 +49,7 @@ const startServer = async () => {
     app.use("/api/vendor", vendorRoutes);
     app.use("/api/admin", adminRoutes);
     app.use("/api/uploads", uploadRoutes);
+    app.use("/api/services", serviceRoutes);
     // Health check
     app.get("/", (req, res) => {
       res.status(200).json({
