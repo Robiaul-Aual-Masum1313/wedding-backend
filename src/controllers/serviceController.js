@@ -181,3 +181,135 @@ export const getMyServices = async (req, res) => {
     });
   }
 };
+
+
+// code for make a service active or inactive
+
+export const updateServiceAvailability = async (req, res) => {
+  try {
+    const db = getDB();
+    const { id } = req.params;
+    const { isActive } = req.body;
+    const vendorId = req.user.id;
+
+    // Validate service ID
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid service ID.",
+      });
+    }
+
+    // Validate availability value
+    if (typeof isActive !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "isActive must be true or false.",
+      });
+    }
+
+    const serviceCollection = db.collection("services");
+    const serviceId = new ObjectId(id);
+
+    // Find only the service owned by this vendor
+    const service = await serviceCollection.findOne({
+      _id: serviceId,
+      vendorId,
+    });
+
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        message: "Service not found.",
+      });
+    }
+
+    // A service must be approved before it can be activated
+    if (isActive && service.approvalStatus !== "Approved") {
+      return res.status(400).json({
+        success: false,
+        message: "Only approved services can be activated.",
+      });
+    }
+
+    // Check the vendor account
+    const userConditions = [
+      { _id: vendorId },
+      { id: vendorId },
+    ];
+
+    if (ObjectId.isValid(vendorId)) {
+      userConditions.push({ _id: new ObjectId(vendorId) });
+    }
+
+    const vendor = await db.collection("user").findOne(
+      { $or: userConditions },
+      {
+        projection: {
+          subscriptionPlan: 1,
+          isBlocked: 1,
+        },
+      }
+    );
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor account not found.",
+      });
+    }
+
+    if (vendor.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is blocked.",
+      });
+    }
+
+    // Enforce the Free plan's active service limit
+    if (isActive && vendor.subscriptionPlan !== "Premium") {
+      const activeServicesCount = await serviceCollection.countDocuments({
+        vendorId,
+        isActive: true,
+        _id: { $ne: serviceId },
+      });
+
+      if (activeServicesCount >= 3) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Free plan allows a maximum of 3 active services. Upgrade to Premium to activate more.",
+        });
+      }
+    }
+
+    // Update availability
+    await serviceCollection.updateOne(
+      { _id: serviceId, vendorId },
+      {
+        $set: {
+          isActive,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    const updatedService = await serviceCollection.findOne({
+      _id: serviceId,
+      vendorId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Service ${isActive ? "activated" : "deactivated"} successfully.`,
+      service: updatedService,
+    });
+  } catch (error) {
+    console.error("Update service availability error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to update service availability.",
+    });
+  }
+};
