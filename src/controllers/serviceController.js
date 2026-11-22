@@ -1,13 +1,14 @@
 
 import { getDB } from "../config/db.js";
+import { ObjectId } from "mongodb";
 
 const allowedCategories = [
-  "Photography",
-  "Venue",
-  "Catering",
-  "Decoration",
-  "Music",
-  "Makeup",
+  "Photography & Videography",
+  "Wedding Venues",
+  "Decoration & Florist",
+  "Catering Services",
+  "Makeup & Styling",
+  "Wedding Fashion",
 ];
 
 export const createService = async (req, res) => {
@@ -72,7 +73,7 @@ export const createService = async (req, res) => {
 
     // Read the vendor's actual subscription from Better Auth
     const vendor = await db.collection("user").findOne(
-      { id: vendorId },
+      { _id: new ObjectId(vendorId) },
       { projection: { subscriptionPlan: 1, isBlocked: 1 } }
     );
 
@@ -147,6 +148,36 @@ export const createService = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Unable to create service.",
+    });
+  }
+};
+
+//code for get vendor services
+
+export const getMyServices = async (req, res) => {
+  try {
+    const db = getDB();
+
+    // Get the vendor ID from the verified JWT
+    const vendorId = req.user.id;
+
+    const services = await db
+      .collection("services")
+      .find({ vendorId })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    return res.status(200).json({
+      success: true,
+      totalServices: services.length,
+      services,
+    });
+  } catch (error) {
+    console.error("Get my services error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to retrieve your services.",
     });
   }
 };
