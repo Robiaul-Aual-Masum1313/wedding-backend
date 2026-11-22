@@ -313,3 +313,219 @@ export const updateServiceAvailability = async (req, res) => {
     });
   }
 };
+// code for delating a service
+
+export const deleteService = async (req, res) => {
+  try {
+    const db = getDB();
+    const { id } = req.params;
+    const vendorId = req.user.id;
+
+    // Validate service ID
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid service ID.",
+      });
+    }
+
+    const serviceId = new ObjectId(id);
+
+    // Delete only the service owned by this vendor
+    const result = await db.collection("services").deleteOne({
+      _id: serviceId,
+      vendorId,
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Service not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Service deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete service error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to delete service.",
+    });
+  }
+};
+
+//code to edit a srevice
+
+export const updateService = async (req, res) => {
+  try {
+    const db = getDB();
+    const { id } = req.params;
+    const vendorId = req.user.id;
+
+    const {
+      title,
+      category,
+      description,
+      price,
+      location,
+      images,
+    } = req.body;
+
+    // Validate service ID
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid service ID.",
+      });
+    }
+
+    // Validate required fields
+    if (
+      typeof title !== "string" ||
+      !title.trim() ||
+      typeof category !== "string" ||
+      !category.trim() ||
+      typeof description !== "string" ||
+      !description.trim() ||
+      typeof location !== "string" ||
+      !location.trim() ||
+      !Array.isArray(images) ||
+      images.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide all required service fields.",
+      });
+    }
+
+    // Validate category
+    if (!allowedCategories.includes(category)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid service category.",
+      });
+    }
+
+    // Validate price
+    const servicePrice = Number(price);
+
+    if (
+      price === undefined ||
+      price === null ||
+      price === "" ||
+      !Number.isFinite(servicePrice) ||
+      servicePrice <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Price must be a valid positive number.",
+      });
+    }
+
+    // Validate image URLs
+    const validImages = images.every(
+      (image) =>
+        typeof image === "string" &&
+        /^https:\/\/.+/i.test(image)
+    );
+
+    if (!validImages || images.length > 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide up to 5 valid HTTPS image URLs.",
+      });
+    }
+
+    const serviceCollection = db.collection("services");
+    const serviceId = new ObjectId(id);
+
+    // Verify ownership
+    const existingService = await serviceCollection.findOne({
+      _id: serviceId,
+      vendorId,
+    });
+
+    if (!existingService) {
+      return res.status(404).json({
+        success: false,
+        message: "Service not found.",
+      });
+    }
+
+    // Verify vendor account
+    const userConditions = [
+      { _id: vendorId },
+      { id: vendorId },
+    ];
+
+    if (ObjectId.isValid(vendorId)) {
+      userConditions.push({
+        _id: new ObjectId(vendorId),
+      });
+    }
+
+    const vendor = await db.collection("user").findOne(
+      { $or: userConditions },
+      {
+        projection: {
+          isBlocked: 1,
+        },
+      }
+    );
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor account not found.",
+      });
+    }
+
+    if (vendor.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is blocked.",
+      });
+    }
+
+    // Update only the allowed fields
+    await serviceCollection.updateOne(
+      {
+        _id: serviceId,
+        vendorId,
+      },
+      {
+        $set: {
+          title: title.trim(),
+          category,
+          description: description.trim(),
+          price: servicePrice,
+          location: location.trim(),
+          images,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    const updatedService = await serviceCollection.findOne({
+      _id: serviceId,
+      vendorId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Service updated successfully.",
+      service: updatedService,
+    });
+  } catch (error) {
+    console.error("Update service error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to update service.",
+    });
+  }
+};
