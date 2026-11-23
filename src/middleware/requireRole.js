@@ -20,6 +20,8 @@ export const requireRole = (...allowedRoles) => {
         message: "Authentication required.",
       });
     }
+  //     console.log("User role from token:", req.user.role);
+  // console.log("Allowed roles:", allowedRoles);
 
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({

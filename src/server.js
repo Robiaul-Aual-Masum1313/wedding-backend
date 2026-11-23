@@ -13,6 +13,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import publicServiceRoutes from "./routes/publicServiceRoutes.js";
+import bookingRoutes from "./routes/bookingRoutes.js";
 
 const app = express();
 
@@ -55,6 +56,7 @@ const startServer = async () => {
     app.use("/api/services", serviceRoutes);
     app.use("/api/customer", customerRoutes);
     app.use("/api/admin", adminRoutes);
+    app.use("/api/bookings", bookingRoutes);
     // Health check
     app.get("/", (req, res) => {
       res.status(200).json({

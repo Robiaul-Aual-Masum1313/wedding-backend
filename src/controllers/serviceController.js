@@ -703,3 +703,83 @@ export const getFeaturedServices = async (req, res) => {
     });
   }
 };
+
+//code for service details page
+
+
+// Get a single service by ID with vendor information
+
+export const getServiceById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate service ID
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid service ID.",
+      });
+    }
+
+    const db = getDB();
+
+    // Find only approved and active services
+    const service = await db.collection("services").findOne({
+      _id: new ObjectId(id),
+      approvalStatus: "Approved",
+      isActive: true,
+    });
+
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        message: "Service not found or currently unavailable.",
+      });
+    }
+
+    // Find vendor information
+    let vendor = null;
+
+    if (ObjectId.isValid(service.vendorId)) {
+      vendor = await db.collection("user").findOne(
+        {
+          _id: new ObjectId(service.vendorId),
+        },
+        {
+          projection: {
+            name: 1,
+            image: 1,
+            businessName: 1,
+            email: 1,
+          },
+        }
+      );
+    }
+
+    // Format the response
+    const formattedService = {
+      ...service,
+      serviceName: service.title,
+      vendor: vendor
+        ? {
+            name: vendor.name || "Unknown Vendor",
+            image: vendor.image || "",
+            businessName: vendor.businessName || "",
+            email: vendor.email || "",
+          }
+        : null,
+    };
+
+    return res.status(200).json({
+      success: true,
+      service: formattedService,
+    });
+  } catch (error) {
+    console.error("Get service details error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to retrieve service details.",
+    });
+  }
+};
