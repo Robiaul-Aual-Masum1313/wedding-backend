@@ -8,10 +8,10 @@ import { toNodeHandler } from "better-auth/node";
 import { connectDB } from "./config/db.js";
 import { createAuth } from "./lib/auth.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
-import customerRoutes from "./routes/customerRoutes.js";
 import vendorRoutes from "./routes/vendorRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
+import customerRoutes from "./routes/customerRoutes.js";
 
 const app = express();
 
@@ -45,11 +45,11 @@ const startServer = async () => {
     app.use(express.json());
 
     // Protected API routes
-    app.use("/api/customer", customerRoutes);
     app.use("/api/vendor", vendorRoutes);
-    app.use("/api/admin", adminRoutes);
     app.use("/api/uploads", uploadRoutes);
     app.use("/api/services", serviceRoutes);
+    app.use("/api/customer", customerRoutes);
+    app.use("/api/admin", adminRoutes);
     // Health check
     app.get("/", (req, res) => {
       res.status(200).json({

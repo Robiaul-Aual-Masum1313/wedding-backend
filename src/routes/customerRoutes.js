@@ -2,18 +2,13 @@
 import express from "express";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireRole } from "../middleware/requireRole.js";
+import { getCustomerDashboard } from "../controllers/customerController.js";
 
 const router = express.Router();
 
-// Every route in this router requires a valid Customer JWT.
+// Every route requires an authenticated Customer.
 router.use(requireAuth, requireRole("Customer"));
 
-router.get("/dashboard", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Welcome to your Customer dashboard!",
-    user: req.user,
-  });
-});
+router.get("/dashboard", getCustomerDashboard);
 
 export default router;
