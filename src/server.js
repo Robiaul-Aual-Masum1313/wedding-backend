@@ -12,6 +12,7 @@ import vendorRoutes from "./routes/vendorRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
+import publicServiceRoutes from "./routes/publicServiceRoutes.js";
 
 const app = express();
 
@@ -43,6 +44,10 @@ const startServer = async () => {
 
     // Body parser for other API routes
     app.use(express.json());
+
+    // Public API routes
+    app.use("/api/services", publicServiceRoutes);
+    app.use("/api/services", serviceRoutes);
 
     // Protected API routes
     app.use("/api/vendor", vendorRoutes);

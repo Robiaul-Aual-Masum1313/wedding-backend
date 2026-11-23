@@ -529,3 +529,177 @@ export const updateService = async (req, res) => {
     });
   }
 };
+
+// code for public show service
+// Get public services with server-side search, filtering, and sorting
+
+export const getPublicServices = async (req, res) => {
+  try {
+    const {
+      search = "",
+      category = "All Categories",
+      location = "All Locations",
+      sort = "default",
+    } = req.query;
+
+    const db = getDB();
+    const servicesCollection = db.collection("services");
+
+    // Only approved and active services are publicly visible
+    const filter = {
+      approvalStatus: "Approved",
+      isActive: true,
+    };
+
+    // Category filtering
+    if (category && category !== "All Categories") {
+      filter.category = category;
+    }
+
+    // Location filtering
+    if (location && location !== "All Locations") {
+      filter.location = location;
+    }
+
+    // Search by service title or description
+    if (search.trim()) {
+      const escapedSearch = search.trim().replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+
+      const searchRegex = new RegExp(escapedSearch, "i");
+
+      filter.$or = [
+        { title: searchRegex },
+        { description: searchRegex },
+      ];
+    }
+
+    // Server-side sorting
+    const sortOptions = {
+      default: { createdAt: -1 },
+      "price-low": { price: 1 },
+      "price-high": { price: -1 },
+    };
+
+    const sortQuery = sortOptions[sort] || sortOptions.default;
+
+    // Fetch matching services
+    const services = await servicesCollection
+      .find(filter)
+      .sort(sortQuery)
+      .toArray();
+
+    // Get all available locations for public services
+    const locations = await servicesCollection.distinct("location", {
+      approvalStatus: "Approved",
+      isActive: true,
+    });
+
+    // Map database title to the existing frontend ServiceCard field
+    const formattedServices = services.map((service) => ({
+      ...service,
+      serviceName: service.title,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      totalServices: formattedServices.length,
+      locations: locations.sort(),
+      services: formattedServices,
+    });
+  } catch (error) {
+    console.error("Get public services error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve services",
+    });
+  }
+};
+
+
+// Get latest 6 approved and active services for the public Home page
+
+export const getFeaturedServices = async (req, res) => {
+  try {
+    const db = getDB();
+
+    const services = await db
+      .collection("services")
+      .find({
+        approvalStatus: "Approved",
+        isActive: true,
+      })
+      .sort({ createdAt: -1 })
+      .limit(6)
+      .toArray();
+
+    // Return an empty array if no public services exist
+    if (services.length === 0) {
+      return res.status(200).json({
+        success: true,
+        totalServices: 0,
+        services: [],
+      });
+    }
+
+    // Collect valid vendor IDs
+    const vendorIds = services
+      .map((service) => service.vendorId)
+      .filter((vendorId) => ObjectId.isValid(vendorId))
+      .map((vendorId) => new ObjectId(vendorId));
+
+    // Fetch vendor information from Better Auth's user collection
+    const vendors = await db
+      .collection("user")
+      .find(
+        {
+          _id: { $in: vendorIds },
+        },
+        {
+          projection: {
+            name: 1,
+            image: 1,
+            businessName: 1,
+          },
+        }
+      )
+      .toArray();
+
+    // Create a lookup map for vendor information
+    const vendorMap = new Map(
+      vendors.map((vendor) => [vendor._id.toString(), vendor])
+    );
+
+    // Attach vendor information to each service
+    const formattedServices = services.map((service) => {
+      const vendor = vendorMap.get(service.vendorId);
+
+      return {
+        ...service,
+        vendor: vendor
+          ? {
+              name: vendor.name || "Unknown Vendor",
+              image: vendor.image || "",
+              businessName: vendor.businessName || "",
+            }
+          : null,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      totalServices: formattedServices.length,
+      services: formattedServices,
+    });
+  } catch (error) {
+    console.error("Get featured services error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to retrieve featured services.",
+    });
+  }
+};
