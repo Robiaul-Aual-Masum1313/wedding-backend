@@ -14,6 +14,7 @@ import serviceRoutes from "./routes/serviceRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import publicServiceRoutes from "./routes/publicServiceRoutes.js";
 import bookingRoutes from "./routes/bookingRoutes.js";
+import stripeWebhookRoutes from "./routes/stripeWebhookRoutes.js";
 
 const app = express();
 
@@ -42,6 +43,8 @@ const startServer = async () => {
     // Better Auth handler
     // Express 5 syntax
     app.all("/api/auth/*splat", toNodeHandler(auth));
+    // Stripe webhook — MUST be before express.json()
+    app.use("/api/stripe", stripeWebhookRoutes);
 
     // Body parser for other API routes
     app.use(express.json());

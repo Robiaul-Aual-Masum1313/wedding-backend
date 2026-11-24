@@ -4,7 +4,7 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { getAllServices , updateServiceApproval,
   deleteRejectedService,
-  updateAdminServiceAvailability, } from "../controllers/adminController.js";
+  updateAdminServiceAvailability,getAllUsers,updateUserStatus, } from "../controllers/adminController.js";
 
 const router = express.Router();
 
@@ -18,5 +18,7 @@ router.patch(
   "/services/:id/availability",
   updateAdminServiceAvailability
 );
+router.get("/users", getAllUsers);
+router.patch("/users/:id/status", updateUserStatus);
 
 export default router;

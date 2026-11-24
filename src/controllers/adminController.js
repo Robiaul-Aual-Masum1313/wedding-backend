@@ -451,3 +451,250 @@ export const updateAdminServiceAvailability = async (req, res) => {
     });
   }
 };
+
+//code for admin user manger page 
+
+
+const allowedUserRoles = ["Customer", "Vendor", "Admin"];
+const allowedUserStatuses = ["Active", "Blocked"];
+
+export const getAllUsers = async (req, res) => {
+  try {
+    const db = getDB();
+    const usersCollection = db.collection("user");
+
+    // 1. Read query parameters
+    const search = (req.query.search || "").trim();
+    const role = req.query.role;
+    const status = req.query.status;
+
+    // 2. Validate query parameters
+    if (search.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Search cannot exceed 100 characters.",
+      });
+    }
+
+    if (role && !allowedUserRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user role.",
+      });
+    }
+
+    if (status && !allowedUserStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user status.",
+      });
+    }
+
+    // 3. Get overall statistics (without filters)
+    const [
+      total,
+      customers,
+      vendors,
+      admins,
+      blocked,
+    ] = await Promise.all([
+      usersCollection.countDocuments({}),
+      usersCollection.countDocuments({ role: "Customer" }),
+      usersCollection.countDocuments({ role: "Vendor" }),
+      usersCollection.countDocuments({ role: "Admin" }),
+      usersCollection.countDocuments({ isBlocked: true }),
+    ]);
+
+    // 4. Build MongoDB filters
+    const filters = [];
+
+    if (role) {
+      filters.push({ role });
+    }
+
+    if (status === "Blocked") {
+      filters.push({ isBlocked: true });
+    } else if (status === "Active") {
+      // Also include older user documents where isBlocked is missing.
+      filters.push({
+        isBlocked: { $ne: true },
+      });
+    }
+
+    // 5. Search by name or email
+    if (search) {
+      const searchRegex = new RegExp(
+        search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "i"
+      );
+
+      filters.push({
+        $or: [
+          { name: searchRegex },
+          { email: searchRegex },
+        ],
+      });
+    }
+
+    // 6. Combine filters
+    const query = filters.length
+      ? { $and: filters }
+      : {};
+
+    // 7. Retrieve filtered users
+    const users = await usersCollection
+      .find(query, {
+        projection: {
+          _id: 1,
+          id: 1,
+          name: 1,
+          email: 1,
+          role: 1,
+          isBlocked: 1,
+          createdAt: 1,
+          image: 1,
+        },
+      })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    // 8. Format users for frontend
+    const formattedUsers = users.map((user) => ({
+      id: String(user._id ?? user.id),
+      name: user.name || "Unknown User",
+      email: user.email,
+      role: user.role || "Customer",
+      status: user.isBlocked ? "Blocked" : "Active",
+      joinedAt: user.createdAt || null,
+      image: user.image || "",
+    }));
+
+    // 9. Send response
+    return res.status(200).json({
+      success: true,
+      totalUsers: total,
+      totalFiltered: formattedUsers.length,
+      stats: {
+        total,
+        customers,
+        vendors,
+        admins,
+        blocked,
+      },
+      users: formattedUsers,
+    });
+  } catch (error) {
+    console.error("Get all users error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to retrieve users.",
+    });
+  }
+};
+
+//code for block a user by admin 
+
+
+export const updateUserStatus = async (req, res) => {
+  try {
+    const db = getDB();
+    const usersCollection = db.collection("user");
+
+    const { id } = req.params;
+    const { isBlocked } = req.body;
+
+    // 1. Validate user ID.
+    if (!id || !ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID.",
+      });
+    }
+
+    // 2. Validate blocked status.
+    if (typeof isBlocked !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "isBlocked must be a boolean value.",
+      });
+    }
+
+    // 3. Find the target user.
+    const targetUser = await usersCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    // 4. Prevent an Admin from changing their own status.
+    const targetUserId = String(
+      targetUser.id ?? targetUser._id
+    );
+
+    if (targetUserId === req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot change your own account status.",
+      });
+    }
+
+    // 5. Prevent changing Admin accounts.
+    if (targetUser.role === "Admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Admin accounts cannot be blocked or unblocked.",
+      });
+    }
+
+    // 6. Check whether the status is already the requested value.
+    if (targetUser.isBlocked === isBlocked) {
+      return res.status(200).json({
+        success: true,
+        message: isBlocked
+          ? "This user is already blocked."
+          : "This user is already active.",
+        user: {
+          id: targetUserId,
+          status: isBlocked ? "Blocked" : "Active",
+        },
+      });
+    }
+
+    // 7. Update user status.
+    await usersCollection.updateOne(
+      { _id: targetUser._id },
+      {
+        $set: {
+          isBlocked,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    // 8. Send response.
+    return res.status(200).json({
+      success: true,
+      message: isBlocked
+        ? "User blocked successfully."
+        : "User unblocked successfully.",
+      user: {
+        id: targetUserId,
+        status: isBlocked ? "Blocked" : "Active",
+      },
+    });
+  } catch (error) {
+    console.error("Update user status error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to update user status.",
+    });
+  }
+};
+
