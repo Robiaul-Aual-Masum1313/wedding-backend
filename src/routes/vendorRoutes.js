@@ -2,7 +2,7 @@
 import express from "express";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireRole } from "../middleware/requireRole.js";
-import { getVendorDashboard } from "../controllers/vendorController.js";
+import { getVendorDashboard,getVendorProfile,updateVendorProfile, } from "../controllers/vendorController.js";
 import {
   createCheckoutSession,
   getSubscriptionStatus,
@@ -14,6 +14,8 @@ const router = express.Router();
 router.use(requireAuth, requireRole("Vendor"));
 
 router.get("/dashboard", getVendorDashboard);
+router.get("/profile", getVendorProfile);
+router.patch("/profile", updateVendorProfile);
 // Stripe subscription routes.
 router.post("/subscription/checkout", createCheckoutSession);
 router.get("/subscription", getSubscriptionStatus);
