@@ -1,5 +1,7 @@
+
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "@better-auth/mongo-adapter";
+import { getOAuthState } from "better-auth/api";
 import { getDB } from "../config/db.js";
 import { jwt } from "better-auth/plugins";
 
@@ -23,6 +25,13 @@ export const createAuth = () => {
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 6,
+    },
+
+    socialProviders: {
+      google: {
+        clientId: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      },
     },
 
     user: {
@@ -61,30 +70,53 @@ export const createAuth = () => {
     databaseHooks: {
       user: {
         create: {
-          before: async (user) => {
-            const requestedRole = user.role ?? "Customer";
+          before: async (user, ctx) => {
+            let requestedRole = user.role ?? "Customer";
+            let businessName = user.businessName ?? "";
 
+            // Handle Google OAuth registration.
+            if (ctx?.path === "/callback/:id") {
+              const additionalData = await getOAuthState();
+
+              requestedRole = additionalData?.role ?? "Customer";
+
+              businessName =
+                typeof additionalData?.businessName === "string"
+                  ? additionalData.businessName.trim()
+                  : "";
+            }
+
+            // Only Customer and Vendor registrations are allowed.
             if (!["Customer", "Vendor"].includes(requestedRole)) {
               throw new Error("Invalid registration role.");
+            }
+
+            // A Vendor must provide a business name.
+            if (requestedRole === "Vendor") {
+              if (!businessName || businessName.length > 100) {
+                throw new Error("A valid business name is required.");
+              }
             }
 
             return {
               data: {
                 ...user,
                 role: requestedRole,
+                ...(requestedRole === "Vendor"
+                  ? { businessName }
+                  : {}),
               },
             };
           },
         },
       },
     },
+
     plugins: [
       jwt({
         jwt: {
-          // Keep tokens short-lived.
           expirationTime: "5m",
 
-          // Only expose the claims our API needs.
           definePayload: ({ user }) => ({
             id: user.id,
             email: user.email,
