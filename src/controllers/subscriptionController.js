@@ -1,4 +1,3 @@
-
 import { ObjectId } from "mongodb";
 import { getDB } from "../config/db.js";
 import { getStripe } from "../config/stripe.js";
@@ -18,10 +17,7 @@ export const createCheckoutSession = async (req, res) => {
     }
 
     // Find the authenticated vendor in MongoDB.
-    const userIdConditions = [
-      { id },
-      { _id: id },
-    ];
+    const userIdConditions = [{ id }, { _id: id }];
 
     if (ObjectId.isValid(id)) {
       userIdConditions.push({
@@ -29,11 +25,9 @@ export const createCheckoutSession = async (req, res) => {
       });
     }
 
-    const vendor = await getDB()
-      .collection("user")
-      .findOne({
-        $or: userIdConditions,
-      });
+    const vendor = await getDB().collection("user").findOne({
+      $or: userIdConditions,
+    });
 
     if (!vendor) {
       return res.status(404).json({
@@ -50,8 +44,7 @@ export const createCheckoutSession = async (req, res) => {
 
     const hasActivePremium =
       vendor.subscriptionPlan === "Premium" &&
-      (!subscriptionExpiry ||
-        subscriptionExpiry.getTime() > Date.now());
+      (!subscriptionExpiry || subscriptionExpiry.getTime() > Date.now());
 
     if (hasActivePremium) {
       return res.status(409).json({
@@ -90,11 +83,10 @@ export const createCheckoutSession = async (req, res) => {
       },
 
       success_url:
-        `${clientURL}/dashboard/vendor/subscription` +
-        "?checkout=success&session_id={CHECKOUT_SESSION_ID}",
+        `${clientURL}/dashboard/vendor/subscription/success` +
+        "?session_id={CHECKOUT_SESSION_ID}",
 
-      cancel_url:
-        `${clientURL}/dashboard/vendor/subscription?checkout=cancelled`,
+      cancel_url: `${clientURL}/dashboard/vendor/subscription/cancel`,
     });
 
     if (!session.url) {
@@ -120,10 +112,7 @@ export const getSubscriptionStatus = async (req, res) => {
   try {
     const { id } = req.user;
 
-    const userIdConditions = [
-      { id },
-      { _id: id },
-    ];
+    const userIdConditions = [{ id }, { _id: id }];
 
     if (ObjectId.isValid(id)) {
       userIdConditions.push({
@@ -131,12 +120,10 @@ export const getSubscriptionStatus = async (req, res) => {
       });
     }
 
-    const vendor = await getDB()
-      .collection("user")
-      .findOne({
-        $or: userIdConditions,
-        role: "Vendor",
-      });
+    const vendor = await getDB().collection("user").findOne({
+      $or: userIdConditions,
+      role: "Vendor",
+    });
 
     if (!vendor) {
       return res.status(404).json({
