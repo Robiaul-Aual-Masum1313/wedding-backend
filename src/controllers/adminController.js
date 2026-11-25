@@ -698,3 +698,284 @@ export const updateUserStatus = async (req, res) => {
   }
 };
 
+
+export const getAllTransactions = async (req, res) => {
+  try {
+    const db = getDB();
+
+    const transactionsCollection = db.collection("transactions");
+    const usersCollection = db.collection("user");
+
+    // 1. Retrieve all transactions, newest first.
+    const transactions = await transactionsCollection
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    // 2. Collect unique vendor IDs from transactions.
+    const vendorIds = [
+      ...new Set(
+        transactions
+          .map((transaction) => transaction.vendorId)
+          .filter(Boolean)
+          .map(String)
+      ),
+    ];
+
+    // 3. Build vendor lookup conditions.
+    const vendorConditions = [];
+
+    vendorIds.forEach((vendorId) => {
+      vendorConditions.push(
+        { _id: vendorId },
+        { id: vendorId }
+      );
+
+      if (ObjectId.isValid(vendorId)) {
+        vendorConditions.push({
+          _id: new ObjectId(vendorId),
+        });
+      }
+    });
+
+    // 4. Retrieve vendor information.
+    const vendors = vendorConditions.length
+      ? await usersCollection
+          .find(
+            {
+              $or: vendorConditions,
+            },
+            {
+              projection: {
+                _id: 1,
+                id: 1,
+                name: 1,
+                businessName: 1,
+                email: 1,
+                image: 1,
+              },
+            }
+          )
+          .toArray()
+      : [];
+
+    // 5. Create a vendor lookup map.
+    const vendorMap = new Map();
+
+    vendors.forEach((vendor) => {
+      const vendorInfo = {
+        name: vendor.name || "Unknown Vendor",
+        businessName: vendor.businessName || "",
+        email: vendor.email || "",
+        image: vendor.image || "",
+      };
+
+      if (vendor._id) {
+        vendorMap.set(String(vendor._id), vendorInfo);
+      }
+
+      if (vendor.id) {
+        vendorMap.set(String(vendor.id), vendorInfo);
+      }
+    });
+
+    // 6. Attach vendor information to each transaction.
+    const formattedTransactions = transactions.map((transaction) => ({
+      id: String(transaction._id),
+      vendorId: String(transaction.vendorId || ""),
+      vendor: vendorMap.get(String(transaction.vendorId)) || null,
+      plan: transaction.plan || "Unknown",
+      amount: Number(transaction.amount) || 0,
+      currency: transaction.currency || "usd",
+      status: transaction.status || "Unknown",
+      stripeSessionId: transaction.stripeSessionId || "",
+      stripeSubscriptionId: transaction.stripeSubscriptionId || "",
+      createdAt: transaction.createdAt || null,
+    }));
+
+    // 7. Calculate transaction statistics.
+    const totalTransactions = formattedTransactions.length;
+
+    const paidTransactions = formattedTransactions.filter(
+      (transaction) => transaction.status.toLowerCase() === "paid"
+    ).length;
+
+    const failedTransactions = formattedTransactions.filter(
+      (transaction) => transaction.status.toLowerCase() === "failed"
+    ).length;
+
+    const pendingTransactions = formattedTransactions.filter(
+      (transaction) => transaction.status.toLowerCase() === "pending"
+    ).length;
+
+    // 8. Send response.
+    return res.status(200).json({
+      success: true,
+      stats: {
+        totalTransactions,
+        paidTransactions,
+        failedTransactions,
+        pendingTransactions,
+      },
+      totalFiltered: formattedTransactions.length,
+      transactions: formattedTransactions,
+    });
+  } catch (error) {
+    console.error("Get all transactions error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to retrieve transactions.",
+    });
+  }
+};
+
+
+//code for admin overview page
+
+export const getAdminOverview = async (req, res) => {
+  try {
+    const db = getDB();
+
+    const usersCollection = db.collection("user");
+    const servicesCollection = db.collection("services");
+    const bookingsCollection = db.collection("bookings");
+    const transactionsCollection = db.collection("transactions");
+
+    // 1. Get platform statistics.
+    const [
+      totalUsers,
+      totalVendors,
+      totalCustomers,
+      totalServices,
+      totalBookings,
+      pendingApprovals,
+      paidTransactionStats,
+    ] = await Promise.all([
+      usersCollection.countDocuments({}),
+      usersCollection.countDocuments({ role: "Vendor" }),
+      usersCollection.countDocuments({ role: "Customer" }),
+      servicesCollection.countDocuments({}),
+      bookingsCollection.countDocuments({}),
+      servicesCollection.countDocuments({
+        approvalStatus: "Pending",
+      }),
+
+      // Calculate revenue only from successful payments.
+      transactionsCollection.aggregate([
+        {
+          $match: {
+            status: "Paid",
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: {
+              $sum: {
+                $convert: {
+                  input: "$amount",
+                  to: "double",
+                  onError: 0,
+                  onNull: 0,
+                },
+              },
+            },
+            successfulPayments: {
+              $sum: 1,
+            },
+          },
+        },
+      ]).toArray(),
+    ]);
+
+    // 2. Get the 4 newest users.
+    const recentUsers = await usersCollection
+      .find(
+        {},
+        {
+          projection: {
+            _id: 1,
+            id: 1,
+            name: 1,
+            email: 1,
+            role: 1,
+            image: 1,
+            createdAt: 1,
+          },
+        }
+      )
+      .sort({ createdAt: -1 })
+      .limit(4)
+      .toArray();
+
+    // 3. Get the 3 newest services.
+    const recentServices = await servicesCollection
+      .find(
+        {},
+        {
+          projection: {
+            _id: 1,
+            title: 1,
+            category: 1,
+            approvalStatus: 1,
+            createdAt: 1,
+            images: 1,
+          },
+        }
+      )
+      .sort({ createdAt: -1 })
+      .limit(3)
+      .toArray();
+
+    // 4. Extract payment statistics.
+    const paymentStats = paidTransactionStats[0] || {
+      totalRevenue: 0,
+      successfulPayments: 0,
+    };
+
+    // 5. Format recent users.
+    const formattedUsers = recentUsers.map((user) => ({
+      id: String(user._id ?? user.id),
+      name: user.name || "Unknown User",
+      email: user.email || "",
+      role: user.role || "Customer",
+      image: user.image || "",
+      createdAt: user.createdAt || null,
+    }));
+
+    // 6. Format recent services.
+    const formattedServices = recentServices.map((service) => ({
+      id: String(service._id),
+      title: service.title || "Untitled Service",
+      category: service.category || "Uncategorized",
+      approvalStatus: service.approvalStatus || "Pending",
+      createdAt: service.createdAt || null,
+      images: service.images || [],
+    }));
+
+    // 7. Send response.
+    return res.status(200).json({
+      success: true,
+      stats: {
+        totalUsers,
+        totalVendors,
+        totalCustomers,
+        totalServices,
+        totalBookings,
+        totalRevenue: paymentStats.totalRevenue,
+        pendingApprovals,
+        successfulPayments: paymentStats.successfulPayments,
+      },
+      recentUsers: formattedUsers,
+      recentServices: formattedServices,
+    });
+  } catch (error) {
+    console.error("Get admin overview error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to retrieve admin overview.",
+    });
+  }
+};

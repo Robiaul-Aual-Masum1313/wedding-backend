@@ -115,3 +115,60 @@ export const createCheckoutSession = async (req, res) => {
     });
   }
 };
+
+export const getSubscriptionStatus = async (req, res) => {
+  try {
+    const { id } = req.user;
+
+    const userIdConditions = [
+      { id },
+      { _id: id },
+    ];
+
+    if (ObjectId.isValid(id)) {
+      userIdConditions.push({
+        _id: new ObjectId(id),
+      });
+    }
+
+    const vendor = await getDB()
+      .collection("user")
+      .findOne({
+        $or: userIdConditions,
+        role: "Vendor",
+      });
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor account not found.",
+      });
+    }
+
+    const expiresAt = vendor.subscriptionExpiresAt
+      ? new Date(vendor.subscriptionExpiresAt)
+      : null;
+
+    const isPremium =
+      vendor.subscriptionPlan === "Premium" &&
+      expiresAt !== null &&
+      !Number.isNaN(expiresAt.getTime()) &&
+      expiresAt.getTime() > Date.now();
+
+    return res.status(200).json({
+      success: true,
+      subscription: {
+        plan: isPremium ? "Premium" : "Free",
+        expiresAt: isPremium ? expiresAt : null,
+        isPremium,
+      },
+    });
+  } catch (error) {
+    console.error("Get subscription status error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to get subscription status.",
+    });
+  }
+};
