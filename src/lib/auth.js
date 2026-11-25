@@ -1,4 +1,3 @@
-
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "@better-auth/mongo-adapter";
 import { getOAuthState } from "better-auth/api";
@@ -21,6 +20,15 @@ export const createAuth = () => {
     baseURL: process.env.BETTER_AUTH_URL,
     secret: process.env.BETTER_AUTH_SECRET,
     trustedOrigins: [process.env.CLIENT_URL],
+
+    // newly added code start
+    advanced: {
+      defaultCookieAttributes: {
+        sameSite: "none",
+        secure: true,
+      },
+    },
+// newly added code end
 
     emailAndPassword: {
       enabled: true,
@@ -102,9 +110,7 @@ export const createAuth = () => {
               data: {
                 ...user,
                 role: requestedRole,
-                ...(requestedRole === "Vendor"
-                  ? { businessName }
-                  : {}),
+                ...(requestedRole === "Vendor" ? { businessName } : {}),
               },
             };
           },
